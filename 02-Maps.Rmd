@@ -1,0 +1,66 @@
+```{r setumaps, include=FALSE}
+rm(list = ls()) ; invisible(gc()) ; set.seed(42)
+library(knitr)
+library(tidyverse)
+library(vroom)
+library(sf)
+library(leaflet)
+theme_set(bayesplot::theme_default())
+opts_chunk$set(
+  echo = F, message = F, warning = F, fig.height = 6, fig.width = 8,
+  cache = T, cache.lazy = F)
+```
+
+# Maps
+
+This chapter description.
+
+```{r speciesmaps}
+species <- data.frame(Genus = c("Symphonia", "Dicorynia", "Tachigali"), Selected = 1, DBHmature = c(17, 22, 15)) # from @Hardy2005
+```
+
+
+```{r datamaps}
+data <- read_csv2("data/Paracou_P16_2020.csv") %>%
+  left_join(species) %>%
+  mutate(DBH = CircCorr/pi) %>% 
+  st_as_sf(coords = c("Xutm", "Yutm"),
+           crs = '+proj=utm +zone=22 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0') %>% 
+  filter(Selected == 1) %>% 
+  filter(DBH > DBHmature) %>% 
+  filter(SubPlot %in%  c(14:15, 19:20)) # to change with Giacomo
+```
+
+```{r map, eval=F}
+crs_rot = "+proj=omerc +lat_0=36.934 +lonc=-90.849 +alpha=0 +k_0=.7 +datum=WGS84 +units=m +no_defs +gamma=20"
+limits <- st_read("data/OverallPlots/OverallPlots.shp", quiet = T) %>% 
+  filter(Plot == 16, Subplot %in% unique(data$SubPlot)) %>% 
+  st_transform(crs = crs_rot)
+contour <- st_read("data/ContourLinesPlots/ContourLinePlots.shp", quiet = T) %>% 
+  st_transform(contour, crs = crs_rot) %>% 
+  st_crop(limits)
+trees <- st_transform(data, crs = crs_rot) %>% 
+  st_crop(limits) %>% 
+  mutate(label = paste0("P", Plot, "-", SubPlot, "-", TreeFieldNum, "_", substr(Genus, 1, 1)))
+g <- ggplot() +
+    geom_sf(data = contour, fill = NA, col = "lightgrey") +
+    geom_sf(data = limits, fill = NA, col = "darkgrey", aes(text = Subplot)) +
+    geom_sf_text(data = limits, aes(label = Subplot), colour = "darkgrey") +
+    geom_sf(data = trees, aes(shape = Genus), col = "black") +
+    ggrepel::geom_text_repel(
+      data = trees,
+      aes(label = label, geometry = geometry),
+      stat = "sf_coordinates",
+      min.segment.length = 0
+    ) +
+    theme(axis.title = element_blank(), axis.text = element_blank(), 
+          axis.ticks = element_blank(), axis.line = element_blank()) +
+    scale_color_discrete(guide = "none")
+ggsave(g, file = "test.png", path = 'maps', width = 297, height = 420, unit = 'mm', dpi = 300, bg = "white")
+```
+
+```{r}
+include_graphics("maps/test.png")
+```
+
+

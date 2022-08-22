@@ -1,0 +1,21 @@
+--- 
+title: "regeneration"
+subtitle: "Descritption."
+author: "S. Schmitt, M. Aubry Kientz, G. Salzet"
+date: "`r Sys.Date()`"
+site: bookdown::bookdown_site
+documentclass: book
+csl: biblio/mee.csl
+bibliography: biblio/library.bib
+link-citations: yes
+colorlinks: yes
+description: "Description."
+---
+
+`r if (knitr:::is_html_output()) '# Preface {-}'`
+
+`r if (knitr:::is_html_output()) 'This study aims to description. '`
+
+`r if (knitr:::is_html_output()) 'Have a nice reading.'`
+
+`r if (knitr:::is_html_output()) '<div align="right">  *Sylvain*'`
