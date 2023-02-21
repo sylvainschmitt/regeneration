@@ -1,0 +1,19 @@
+```{r setupind, include=FALSE}
+rm(list = ls()) ; invisible(gc()) ; set.seed(42)
+library(knitr)
+library(tidyverse)
+library(vroom)
+library(sf)
+library(terra)
+library(patchwork)
+theme_set(bayesplot::theme_default())
+opts_chunk$set(
+  echo = F, message = F, warning = F, fig.height = 6, fig.width = 8,
+  cache = T, cache.lazy = F)
+```
+
+# Individual analyses
+
+**Idea**: work with individual presence against random pseudo-absences with distribution modelling.
+
+Y ~ bernoulli_logit(theta + theta_TWI + theta_canopyheight + theta_heighbour + spatial_random_effect)

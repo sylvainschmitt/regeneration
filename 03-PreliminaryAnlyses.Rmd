@@ -1,0 +1,98 @@
+```{r setuppreli, include=FALSE}
+rm(list = ls()) ; invisible(gc()) ; set.seed(42)
+library(knitr)
+library(tidyverse)
+library(vroom)
+library(sf)
+library(terra)
+library(patchwork)
+theme_set(bayesplot::theme_default())
+opts_chunk$set(
+  echo = F, message = F, warning = F, fig.height = 6, fig.width = 8,
+  cache = T, cache.lazy = F)
+```
+
+# preliminary analyses
+
+```{r}
+seedlings <- st_read("save/trilateration/Data_saplings_est.shp", quiet = T)
+twi <- rast("data/rasters/TWI_1m.tif")
+twi <- crop(twi, seedlings)
+dcm <- rast("data/rasters/DCM2016_FTH22.tif")
+dcm <- crop(dcm, seedlings)
+seedlings$twi <- extract(twi, vect(seedlings))$TWI_1m
+seedlings$dcm <- extract(dcm, vect(seedlings))$DCM2016_FTH22
+```
+
+```{r}
+g1 <- ggplot(seedlings) +
+  geom_raster(data = as.data.frame(twi, xy = T), aes(x = x, y = y, fill = TWI_1m)) +
+  geom_sf(aes(col = specie)) +
+  scale_color_manual("Species", values = c("blue", "red", "green")) +
+  ggtitle("TWI") +
+  theme_minimal()
+g2 <- ggplot(seedlings) +
+  geom_raster(data = as.data.frame(dcm, xy = T), aes(x = x, y = y, fill = DCM2016_FTH22)) +
+  geom_sf(aes(col = specie)) +
+  scale_color_manual("Species", values = c("blue", "red", "green")) +
+  ggtitle("DCM") +
+  theme_minimal()
+g1 + g2
+```
+
+
+```{r}
+g1 <- ggplot(seedlings, aes(twi, fill = specie)) + geom_density(alpha = 0.5, col = NA) + scale_x_log10() +
+  scale_fill_manual("Species", values = c("green", "red", "blue")) +
+  ggtitle("TWI")
+g2 <- ggplot(seedlings, aes(dcm, fill = specie)) + geom_density(alpha = 0.5, col = NA) +
+  scale_fill_manual("Species", values = c("green", "red", "blue")) +
+  ggtitle("DCM")
+g1 / g2
+```
+
+```{r}
+seedlings %>% 
+  st_drop_geometry() %>% 
+  mutate(XY = paste0(X,Y)) %>% 
+  group_by(specie, XY, Carre) %>% 
+  summarise(N = n()) %>% 
+  ggplot(aes(as.factor(Carre), log(N), fill = as.factor(Carre))) +
+  geom_boxplot() +
+  facet_wrap(~specie) +
+  ggpubr::stat_compare_means()
+```
+
+
+```{r}
+paracou <- read_csv2("data/inventories/Paracou_P16_2020.csv") %>% 
+  filter(Genus %in% c("Symphonia", "Tachigali", "Dicorynia")) %>% 
+  filter(CircCorr/pi > 15)
+seedlings_df <- seedlings %>% 
+  st_drop_geometry() %>% 
+  cbind(seedlings %>%
+          st_coordinates()) 
+seedlings_df$paracou <- rep(select(paracou, Genus, Xutm, Yutm) %>% nest(), nrow(seedlings_df))
+seedlings_df %>% 
+  unnest(paracou, names_repair = tidyr_legacy) %>% 
+  mutate(id = 1:nrow(.)) %>% 
+  unnest(paracou) %>% 
+  group_by(id) %>% 
+  filter(str_sub(Genus, 1, 1) == as.character(specie)) %>% 
+  mutate(d = sqrt((X.1 - Xutm)^2+(Y.1 - Yutm)^2)) %>% 
+  filter(d == min(d)) %>% 
+  ggplot(aes(d, fill = specie)) +
+  geom_density(alpha = 0.5, col = NA) +
+  scale_x_sqrt() +
+  ggtitle("Distance to closest adult")
+```
+
+```{r}
+read_tsv("data/inventories/Plantules répertoriées.tsv") %>% 
+  ggplot(aes(Hauteur, as.numeric(Nb_folioles), col = str_sub(Id, 1, 1))) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  scale_x_log10() +
+  scale_y_log10()
+```
+

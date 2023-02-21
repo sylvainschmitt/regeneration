@@ -11,8 +11,5 @@ protocols/*.html
 # maps
 maps
 
-# data
-data/traits
-
 # models
 models/*.Rdata

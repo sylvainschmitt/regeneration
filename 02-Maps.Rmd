@@ -19,48 +19,79 @@ This chapter description.
 species <- data.frame(Genus = c("Symphonia", "Dicorynia", "Tachigali"), Selected = 1, DBHmature = c(17, 22, 15)) # from @Hardy2005
 ```
 
-
 ```{r datamaps}
-data <- read_csv2("data/Paracou_P16_2020.csv") %>%
+crs_rot = "+proj=omerc +lat_0=36.934 +lonc=-90.849 +alpha=0 +k_0=.7 +datum=WGS84 +units=m +no_defs +gamma=20"
+data <- read_csv2("data/inventories/Paracou_P16_2020.csv") %>%
   left_join(species) %>%
   mutate(DBH = CircCorr/pi) %>% 
   st_as_sf(coords = c("Xutm", "Yutm"),
            crs = '+proj=utm +zone=22 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0') %>% 
   filter(Selected == 1) %>% 
-  filter(DBH > DBHmature) %>% 
-  filter(SubPlot %in%  c(14:15, 19:20)) # to change with Giacomo
-```
-
-```{r map, eval=F}
-crs_rot = "+proj=omerc +lat_0=36.934 +lonc=-90.849 +alpha=0 +k_0=.7 +datum=WGS84 +units=m +no_defs +gamma=20"
-limits <- st_read("data/OverallPlots/OverallPlots.shp", quiet = T) %>% 
+  mutate(label = paste0(TreeFieldNum, "_", substr(Genus, 1, 1))) %>% 
+  st_transform(data, crs = crs_rot)
+limits <- st_read("data/shapefiles/OverallPlots/OverallPlots.shp", quiet = T) %>% 
   filter(Plot == 16, Subplot %in% unique(data$SubPlot)) %>% 
   st_transform(crs = crs_rot)
-contour <- st_read("data/ContourLinesPlots/ContourLinePlots.shp", quiet = T) %>% 
-  st_transform(contour, crs = crs_rot) %>% 
-  st_crop(limits)
-trees <- st_transform(data, crs = crs_rot) %>% 
-  st_crop(limits) %>% 
-  mutate(label = paste0("P", Plot, "-", SubPlot, "-", TreeFieldNum, "_", substr(Genus, 1, 1)))
-g <- ggplot() +
-    geom_sf(data = contour, fill = NA, col = "lightgrey") +
-    geom_sf(data = limits, fill = NA, col = "darkgrey", aes(text = Subplot)) +
-    geom_sf_text(data = limits, aes(label = Subplot), colour = "darkgrey") +
-    geom_sf(data = trees, aes(shape = Genus), col = "black") +
+contour <- st_read("data/shapefiles/ContourLinesPlots/ContourLinePlots.shp", quiet = T) %>% 
+  st_transform(contour, crs = crs_rot)
+```
+
+```{r mapfun}
+map_subplot <- function(subplot) {
+  sublimits <- filter(limits, Subplot == subplot)
+  subcontour <- st_crop(contour, sublimits)
+  subdata <- st_crop(data, sublimits)
+  g <- ggplot() +
+    geom_sf(data = subcontour, fill = NA, col = "lightgrey") +
+    geom_sf(data = sublimits, fill = NA, col = "darkgrey", text = subplot) +
+    geom_sf_text(subdata = limits, label = subplot, colour = "darkgrey") +
+    geom_sf(data = subdata, aes(shape = Genus), col = "black", size = 3) +
     ggrepel::geom_text_repel(
-      data = trees,
+      data = subdata,
       aes(label = label, geometry = geometry),
       stat = "sf_coordinates",
       min.segment.length = 0
     ) +
     theme(axis.title = element_blank(), axis.text = element_blank(), 
           axis.ticks = element_blank(), axis.line = element_blank()) +
-    scale_color_discrete(guide = "none")
-ggsave(g, file = "test.png", path = 'maps', width = 297, height = 420, unit = 'mm', dpi = 300, bg = "white")
+    scale_color_discrete(guide = "none") +
+    ggtitle(paste("SubPlot:", subplot))
+  ggsave(g, file = paste0("subplot", subplot, ".pdf"), path = 'maps', 
+         width = 297, height = 420, unit = 'mm', dpi = 300, bg = "white")
+}
+```
+
+
+```{r map, eval=F}
+lapply(c(8:10, 13:15, 18:20), map_subplot)
 ```
 
 ```{r}
-include_graphics("maps/test.png")
+include_graphics("maps/subplot10.pdf")
 ```
 
+```{r, eval=F}
+# trilateration first code
+test <- read_tsv("data/Plantules répertoriées.xlsx - Plantules.tsv", locale=locale(decimal_mark = ","))
+paracou <- read_tsv("data/Paracou_P16_C1015_2020.tsv")
+
+test %>% 
+  sample_n(1) %>% 
+  mutate(T1 = paste0("P16_" ,T1C, "_", T1Id, "_r", T1D),
+         T2 = paste0("P16_" ,T2C, "_", T2Id, "_r", T2D),
+         T3 = paste0("P16_" ,T3C, "_", T3Id, "_r", T3D),
+         T4 = paste0("P16_" ,T4C, "_", T4Id, "_r", T4D)) %>% 
+  select(Id, T1, T2, T3, T4) %>% 
+  gather("Tree", "ParacouId", -Id) %>% 
+  separate(ParacouId, c("ParacouId", "r"), "_r", convert = T) %>% 
+  mutate(R = as.numeric(gsub(",", ".", r))) %>% 
+  left_join(paracou %>%
+              mutate(ParacouId = paste0("P", Plot, "_", SubPlot, "_", TreeFieldNum)) %>% 
+              select(ParacouId, Xutm, Yutm)) %>% 
+  group_by(Id) %>% 
+  do(center = paste(nlm(function(x) sqrt(sum((x[1]-.$Xutm)^2+(x[2]-.$Yutm)^2))-sum(.$R), 
+                        c(mean(.$Xutm), mean(.$Yutm)))$estimate, collapse = ";")) %>% 
+  unnest(center) %>% 
+  separate(center, c("Xutm", "Yutm"), convert = T)
+```
 
