@@ -1,7 +1,7 @@
 --- 
 title: "regeneration"
 subtitle: "Descritption."
-author: "S. Schmitt, M. Aubry Kientz, G. Salzet"
+author: "S. Schmitt, M. Aubry Kientz, G. Salzet, Stephan Cassin, Sophie Hoppe"
 date: "`r Sys.Date()`"
 site: bookdown::bookdown_site
 documentclass: book
@@ -12,10 +12,13 @@ colorlinks: yes
 description: "Description."
 ---
 
-`r if (knitr:::is_html_output()) '# Preface {-}'`
+# Preface {-}
 
-`r if (knitr:::is_html_output()) 'This study aims to description. '`
+This study aims to analysis spatial distribution of seedling from
+three Amazonian tree species (*Dicorynia guianensis*, *Symphonia globulifera* 
+and *Tachigali melinonii*) inventoried in the 
+experimental site of Paracou, French Guiana.
 
-`r if (knitr:::is_html_output()) 'Have a nice reading.'`
+Have a nice reading.
 
-`r if (knitr:::is_html_output()) '<div align="right">  *Sylvain*'`
+<div align="right">  *Sylvain*

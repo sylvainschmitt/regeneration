@@ -13,7 +13,8 @@ opts_chunk$set(
 
 # Maps
 
-This chapter description.
+This chapter only help creating maps for field sampling.
+Results can be found in the `maps` folder wen run locally;
 
 ```{r speciesmaps}
 species <- data.frame(Genus = c("Symphonia", "Dicorynia", "Tachigali"), Selected = 1, DBHmature = c(17, 22, 15)) # from @Hardy2005
@@ -21,7 +22,8 @@ species <- data.frame(Genus = c("Symphonia", "Dicorynia", "Tachigali"), Selected
 
 ```{r datamaps}
 crs_rot = "+proj=omerc +lat_0=36.934 +lonc=-90.849 +alpha=0 +k_0=.7 +datum=WGS84 +units=m +no_defs +gamma=20"
-data <- read_csv2("data/inventories/Paracou_P16_2020.csv") %>%
+data <- vroom("data/inventories/paracou.tsv") %>%
+  filter(Plot == "16") %>% 
   left_join(species) %>%
   mutate(DBH = CircCorr/pi) %>% 
   st_as_sf(coords = c("Xutm", "Yutm"),
@@ -65,33 +67,3 @@ map_subplot <- function(subplot) {
 ```{r map, eval=F}
 lapply(c(8:10, 13:15, 18:20), map_subplot)
 ```
-
-```{r}
-include_graphics("maps/subplot10.pdf")
-```
-
-```{r, eval=F}
-# trilateration first code
-test <- read_tsv("data/Plantules répertoriées.xlsx - Plantules.tsv", locale=locale(decimal_mark = ","))
-paracou <- read_tsv("data/Paracou_P16_C1015_2020.tsv")
-
-test %>% 
-  sample_n(1) %>% 
-  mutate(T1 = paste0("P16_" ,T1C, "_", T1Id, "_r", T1D),
-         T2 = paste0("P16_" ,T2C, "_", T2Id, "_r", T2D),
-         T3 = paste0("P16_" ,T3C, "_", T3Id, "_r", T3D),
-         T4 = paste0("P16_" ,T4C, "_", T4Id, "_r", T4D)) %>% 
-  select(Id, T1, T2, T3, T4) %>% 
-  gather("Tree", "ParacouId", -Id) %>% 
-  separate(ParacouId, c("ParacouId", "r"), "_r", convert = T) %>% 
-  mutate(R = as.numeric(gsub(",", ".", r))) %>% 
-  left_join(paracou %>%
-              mutate(ParacouId = paste0("P", Plot, "_", SubPlot, "_", TreeFieldNum)) %>% 
-              select(ParacouId, Xutm, Yutm)) %>% 
-  group_by(Id) %>% 
-  do(center = paste(nlm(function(x) sqrt(sum((x[1]-.$Xutm)^2+(x[2]-.$Yutm)^2))-sum(.$R), 
-                        c(mean(.$Xutm), mean(.$Yutm)))$estimate, collapse = ";")) %>% 
-  unnest(center) %>% 
-  separate(center, c("Xutm", "Yutm"), convert = T)
-```
-

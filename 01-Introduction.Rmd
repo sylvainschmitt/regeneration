@@ -1,3 +1,19 @@
 # Introduction {-}
 
-This study aims to description long.
+Forest dynamics starts with the regeneration of tree species and individuals,
+which itself is governed by abiotic environments and biotic interactions.
+In this study we explored the spatial distribution of three tree species
+at the seedling stage at the Paracou experimental site:
+*Dicorynia guianensis*, *Symphonia globulifera* and *Tachigali melinonii*.
+<!-- Our results highlight a strong aggregated pattern distribution for all three species.  -->
+<!-- Seedling density is highly structured by distance to the Nearest Adult Neighbour (NAN)  -->
+<!-- concurrent with species’ dispersion strategy and Janzen-Connell hypothesis.  -->
+<!-- We used Digital Canopy Model (DCM) to estimate light availability, -->
+<!-- distance to the nearest water the courses  -->
+<!-- and Topographic Wetness Index (TWI) to characterise soil moisture. -->
+<!-- *D. guianensis*’ seedlings were mostly found in light areas  -->
+<!-- and *S. globulifera* on hydromorphic soil.  -->
+<!-- Contrary to the literature, *T. melinonii*’s seedlings were found in shadier areas. -->
+<!-- This could be due to competition with *D. guianensis* excluding *T. melinonii*'s  -->
+<!-- seedling from light areas, and plasticity toward light  -->
+<!-- allowing its seedlings to grow in drained shade areas. -->

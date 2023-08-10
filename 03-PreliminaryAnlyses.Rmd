@@ -12,7 +12,7 @@ opts_chunk$set(
   cache = T, cache.lazy = F)
 ```
 
-# preliminary analyses
+# Preliminary analyses
 
 ```{r}
 seedlings <- st_read("save/trilateration/Data_saplings_est.shp", quiet = T)
@@ -63,32 +63,38 @@ seedlings %>%
   ggpubr::stat_compare_means()
 ```
 
-
 ```{r}
-paracou <- read_csv2("data/inventories/Paracou_P16_2020.csv") %>% 
+paracou <- read_tsv("data/inventories/paracou.tsv") %>% 
+  filter(Plot == "16") %>% 
+  filter(CensusYear == 2020) %>% 
   filter(Genus %in% c("Symphonia", "Tachigali", "Dicorynia")) %>% 
-  filter(CircCorr/pi > 15)
-seedlings_df <- seedlings %>% 
-  st_drop_geometry() %>% 
-  cbind(seedlings %>%
-          st_coordinates()) 
-seedlings_df$paracou <- rep(select(paracou, Genus, Xutm, Yutm) %>% nest(), nrow(seedlings_df))
-seedlings_df %>% 
-  unnest(paracou, names_repair = tidyr_legacy) %>% 
-  mutate(id = 1:nrow(.)) %>% 
-  unnest(paracou) %>% 
-  group_by(id) %>% 
-  filter(str_sub(Genus, 1, 1) == as.character(specie)) %>% 
-  mutate(d = sqrt((X.1 - Xutm)^2+(Y.1 - Yutm)^2)) %>% 
-  filter(d == min(d)) %>% 
-  ggplot(aes(d, fill = specie)) +
+  filter(CircCorr/pi > 15) %>% 
+  st_as_sf(coords = c("Xutm", "Yutm"),
+           crs = '+proj=utm +zone=22 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0')
+get_distance_genus <- function(genus){
+  sub_seedlings <- filter(seedlings, specie == str_sub(genus, 1, 1))
+  sub_adult <- filter(paracou, Genus == genus)
+  distance <- st_distance(sub_seedlings, sub_adult) %>% 
+    as_data_frame() %>% 
+    mutate(ind = 1:n()) %>% 
+    gather(neighbour, distance, -ind) %>% 
+    group_by(ind) %>% 
+    summarise(distance = min(distance))
+  sub_seedlings$distance_neighbour <- distance$distance
+  return(sub_seedlings)
+}
+ lapply(c("Symphonia", "Tachigali", "Dicorynia"), 
+                    get_distance_genus) %>% 
+  bind_rows() %>% 
+  ggplot(aes(as.numeric(distance_neighbour), fill = specie)) +
   geom_density(alpha = 0.5, col = NA) +
   scale_x_sqrt() +
   ggtitle("Distance to closest adult")
 ```
 
+
 ```{r}
-read_tsv("data/inventories/Plantules répertoriées.tsv") %>% 
+readxl::read_xlsx("data/inventories/Plantules répertoriées finale.xlsx") %>% 
   ggplot(aes(Hauteur, as.numeric(Nb_folioles), col = str_sub(Id, 1, 1))) +
   geom_point() +
   geom_smooth(method = "lm") +

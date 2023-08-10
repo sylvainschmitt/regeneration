@@ -16,4 +16,306 @@ opts_chunk$set(
 
 **Idea**: work with individual presence against random pseudo-absences with distribution modelling.
 
-Y ~ bernoulli_logit(theta + theta_TWI + theta_canopyheight + theta_heighbour + spatial_random_effect)
+Y ~ bernoulli_logit(theta + theta_TWI + theta_canopyheight + theta_neighbour + spatial_random_effect)
+
+Possibility to test hieght and number of leaves as a continuous response too.
+
+## Data
+
+```{r indandata}
+# seedlings <- st_read("save/trilateration/Data_saplings_est.shp", quiet = T) %>% 
+#   left_join(readxl::read_xlsx("data/inventories/Plantules répertoriées finale.xlsx") %>% 
+#               select(Carre, X, Y, Id, Hauteur, Nb_feuilles, Nb_folioles)) %>% 
+#   rename(species = specie, leaves = Nb_feuilles, height = Hauteur) %>% 
+#   mutate(presence = 1) %>% 
+#   select(Id, Carre, X, Y, height, leaves) %>% 
+#   unique() # issue with junction
+seedlings <- st_read("save/trilateration/Data_saplings_est.shp", quiet = T) %>% 
+  rename(species = specie) %>% 
+  mutate(presence = 1)
+twi <- rast("data/rasters/TWI_1m.tif")
+twi <- crop(twi, seedlings)
+dcm <- rast("data/rasters/DCM2016_FTH22.tif")
+dcm <- crop(dcm, seedlings)
+seedlings$twi <- extract(twi, vect(seedlings))$TWI_1m
+seedlings$dcm <- extract(dcm, vect(seedlings))$DCM2016_FTH22
+seedlings$neighbours <- (seedlings %>% 
+  st_buffer(5) %>% 
+  st_intersects(seedlings) %>% 
+  as.data.frame() %>% 
+  group_by(col.id) %>% 
+  summarise(neighbours = n()))$neighbours
+absence <- seedlings %>% 
+  st_bbox() %>% 
+  st_as_sfc() %>% 
+  st_sample(nrow(seedlings)) %>% 
+  st_as_sf() %>% 
+  mutate(presence = 0)
+absence$twi <- extract(twi, vect(absence))$TWI_1m
+absence$dcm <- extract(dcm, vect(absence))$DCM2016_FTH22
+absence$neighbours <- (absence %>% 
+  st_buffer(5) %>% 
+  st_intersects(seedlings) %>% 
+  as.data.frame() %>% 
+  group_by(col.id) %>% 
+  summarise(neighbours = n()))$neighbours
+
+paracou <- read_tsv("data/inventories/paracou.tsv") %>% 
+  filter(Plot == "16") %>% 
+  filter(CensusYear == 2020) %>% 
+  filter(Genus %in% c("Symphonia", "Tachigali", "Dicorynia")) %>% 
+  filter(CircCorr/pi > 15) %>% 
+  st_as_sf(coords = c("Xutm", "Yutm"),
+           crs = '+proj=utm +zone=22 +datum=WGS84 +units=m +no_defs +ellps=WGS84 +towgs84=0,0,0')
+get_distance_genus <- function(genus, data){
+  sub_seedlings <- filter(data, species == str_sub(genus, 1, 1))
+  sub_adult <- filter(paracou, Genus == genus)
+  distance <- st_distance(sub_seedlings, sub_adult) %>% 
+    as_data_frame() %>% 
+    mutate(ind = 1:n()) %>% 
+    gather(neighbour, distance, -ind) %>% 
+    group_by(ind) %>% 
+    summarise(distance = min(distance))
+  sub_seedlings$adult <- distance$distance
+  return(sub_seedlings)
+}
+seedlings <- lapply(c("Symphonia", "Tachigali", "Dicorynia"), 
+                    get_distance_genus, seedlings) %>% 
+  bind_rows()
+```
+
+```{r indandatafig}
+ggplot(seedlings) +
+  geom_sf(data = absence, col = "lightgrey") +
+  geom_sf(data = seedlings, aes(col = species)) +
+  theme_bw()
+```
+
+## Environment (water, light, ~nutrients)
+
+```{r indanenvfig}
+gtwi <- ggplot(seedlings) +
+  tidyterra::geom_spatraster(data = twi) +
+  geom_sf(aes(col = species)) +
+  scale_fill_viridis_c("TWI") +
+  theme_bw()
+gdcm <- ggplot(seedlings) +
+  tidyterra::geom_spatraster(data = dcm) +
+  geom_sf(aes(col = species)) +
+  scale_fill_viridis_c("DCM (m)") +
+  theme_bw()
+gtwi + gdcm
+```
+
+```{r indenvfit, eval=FALSE}
+data_s <- bind_rows(
+  filter(seedlings, species == 'S') %>% 
+    st_drop_geometry() %>% 
+    select(presence, twi, dcm),
+  absence %>% 
+    st_drop_geometry() %>% 
+    select(presence, twi, dcm) %>% 
+    sample_n(filter(seedlings, species == 'S') %>% nrow())
+) %>% 
+  mutate(twi = log(twi), dcm = log(dcm)) %>% 
+  rename(symphonia = presence)
+fit_s <- brms::brm(symphonia ~ twi + dcm, data_s, cores = 4)
+data_d <- bind_rows(
+  filter(seedlings, species == 'D') %>% 
+    st_drop_geometry() %>% 
+    select(presence, twi, dcm),
+  absence %>% 
+    st_drop_geometry() %>% 
+    select(presence, twi, dcm) %>% 
+    sample_n(filter(seedlings, species == 'D') %>% nrow())
+) %>% 
+  mutate(twi = log(twi), dcm = log(dcm)) %>% 
+  rename(dicorynia = presence)
+fit_d <- brms::brm(dicorynia  ~ twi + dcm, data_d, cores = 4)
+data_t <- bind_rows(
+  filter(seedlings, species == 'T') %>% 
+    st_drop_geometry() %>% 
+    select(presence, twi, dcm),
+  absence %>% 
+    st_drop_geometry() %>% 
+    select(presence, twi, dcm) %>% 
+    sample_n(filter(seedlings, species == 'T') %>% nrow())
+) %>% 
+  mutate(twi = log(twi), dcm = log(dcm)) %>% 
+  rename(tachigali = presence)
+fit_t <- brms::brm(tachigali ~ twi + dcm, data_t, cores = 4)
+save(fit_s, fit_d, fit_t, file = "save/ind_an_env.Rdata")
+```
+
+```{r indenvrestab}
+load("save/ind_an_env.Rdata")
+sjPlot::tab_model(fit_s, fit_d, fit_t)
+```
+
+## Adult neighbourhood (dispersion)
+
+```{r indanadultsfig}
+ggplot(seedlings) +
+  geom_sf(aes(col = species, size = log(as.numeric(adult)))) +
+  scale_fill_viridis_c("TWI") +
+  theme_bw()
+```
+
+```{r indadultfit, eval=FALSE}
+data_s <- bind_rows(
+  filter(seedlings, species == 'S') %>% 
+    st_drop_geometry() %>% 
+    select(presence, adult),
+  get_distance_genus("Symphonia", 
+                     mutate(absence, species = "S")) %>% 
+    st_drop_geometry() %>% 
+    select(presence, adult) %>% 
+    sample_n(filter(seedlings, species == 'S') %>% nrow())
+) %>% 
+  mutate(adult = log(as.numeric(adult))) %>% 
+  rename(symphonia = presence)
+fit_s <- brms::brm(symphonia ~ adult, data_s, cores = 4)
+data_d <- bind_rows(
+  filter(seedlings, species == 'D') %>% 
+    st_drop_geometry() %>% 
+    select(presence, adult),
+  get_distance_genus("Dicorynia", 
+                     mutate(absence, species = "D")) %>% 
+    st_drop_geometry() %>% 
+    select(presence, adult) %>% 
+    sample_n(filter(seedlings, species == 'D') %>% nrow())
+) %>% 
+  mutate(adult = log(as.numeric(adult))) %>% 
+  rename(dicorynia = presence)
+fit_d <- brms::brm(dicorynia  ~ adult, data_d, cores = 4)
+data_t <- bind_rows(
+  filter(seedlings, species == 'T') %>% 
+    st_drop_geometry() %>% 
+    select(presence, adult),
+  get_distance_genus("Tachigali", 
+                     mutate(absence, species = "T")) %>% 
+    st_drop_geometry() %>% 
+    select(presence, adult) %>% 
+    sample_n(filter(seedlings, species == 'T') %>% nrow())
+) %>% 
+  mutate(adult = log(as.numeric(adult))) %>% 
+  rename(tachigali = presence)
+fit_t <- brms::brm(tachigali ~ adult, data_t, cores = 4)
+save(fit_s, fit_d, fit_t, file = "save/ind_an_adult.Rdata")
+```
+
+```{r indadultrestab}
+load("save/ind_an_adult.Rdata")
+sjPlot::tab_model(fit_s, fit_d, fit_t)
+```
+
+## Seedlings neighbourhood (competition)
+
+```{r indanseedsfig}
+ggplot(seedlings) +
+  geom_sf(aes(col = species, size = log(neighbours))) +
+  scale_fill_viridis_c("TWI") +
+  theme_bw()
+```
+
+```{r indseedsfit, eval=FALSE}
+data_s <- bind_rows(
+  filter(seedlings, species == 'S') %>% 
+    st_drop_geometry() %>% 
+    select(presence, neighbours),
+  absence %>% 
+    st_drop_geometry() %>% 
+    select(presence, neighbours) %>% 
+    sample_n(filter(seedlings, species == 'S') %>% nrow())
+) %>% 
+  mutate(neighbours = log(neighbours)) %>% 
+  rename(symphonia = presence)
+fit_s <- brms::brm(symphonia ~ neighbours, data_s, cores = 4)
+data_d <- bind_rows(
+  filter(seedlings, species == 'D') %>% 
+    st_drop_geometry() %>% 
+    select(presence, neighbours),
+  absence %>% 
+    st_drop_geometry() %>% 
+    select(presence, neighbours) %>% 
+    sample_n(filter(seedlings, species == 'D') %>% nrow())
+) %>% 
+  mutate(neighbours = log(neighbours)) %>% 
+  rename(dicorynia = presence)
+fit_d <- brms::brm(dicorynia  ~ neighbours, data_d, cores = 4)
+data_t <- bind_rows(
+  filter(seedlings, species == 'T') %>% 
+    st_drop_geometry() %>% 
+    select(presence, neighbours),
+  absence %>% 
+    st_drop_geometry() %>% 
+    select(presence, neighbours) %>% 
+    sample_n(filter(seedlings, species == 'T') %>% nrow())
+) %>% 
+  mutate(neighbours = log(neighbours)) %>% 
+  rename(tachigali = presence)
+fit_t <- brms::brm(tachigali ~ neighbours, data_t, cores = 4)
+save(fit_s, fit_d, fit_t, file = "save/ind_an_neighbours.Rdata")
+```
+
+```{r indseedsrestab}
+load("save/ind_an_neighbours.Rdata")
+sjPlot::tab_model(fit_s, fit_d, fit_t)
+```
+
+## All together
+
+```{r indallfit, eval=FALSE}
+data_s <- bind_rows(
+  filter(seedlings, species == 'S') %>% 
+    st_drop_geometry() %>% 
+    select(presence, twi, dcm, neighbours, adult),
+  get_distance_genus("Symphonia", 
+                     mutate(absence, species = "S")) %>% 
+    st_drop_geometry() %>% 
+    select(presence, twi, dcm, neighbours, adult) %>% 
+    sample_n(filter(seedlings, species == 'S') %>% nrow())
+) %>% 
+  mutate(twi = log(twi), dcm = log(dcm),
+         neighbours = log(neighbours), adult = log(as.numeric(adult))) %>% 
+  rename(symphonia = presence)
+fit_s <- brms::brm(symphonia ~ twi + dcm + neighbours + adult, data_s, cores = 4)
+data_d <- bind_rows(
+  filter(seedlings, species == 'D') %>% 
+    st_drop_geometry() %>% 
+    select(presence, twi, dcm, neighbours, adult),
+  get_distance_genus("Dicorynia", 
+                     mutate(absence, species = "D")) %>% 
+    st_drop_geometry() %>% 
+    select(presence, twi, dcm, neighbours, adult) %>% 
+    sample_n(filter(seedlings, species == 'D') %>% nrow())
+) %>% 
+  mutate(twi = log(twi), dcm = log(dcm),
+         neighbours = log(neighbours), adult = log(as.numeric(adult))) %>% 
+  rename(dicorynia = presence)
+fit_d <- brms::brm(dicorynia  ~ twi + dcm + neighbours + adult, data_d, cores = 4)
+data_t <- bind_rows(
+  filter(seedlings, species == 'T') %>% 
+    st_drop_geometry() %>% 
+    select(presence, twi, dcm, neighbours, adult),
+  get_distance_genus("Tachigali", 
+                     mutate(absence, species = "T")) %>% 
+    st_drop_geometry() %>% 
+    select(presence, twi, dcm, neighbours, adult) %>% 
+    sample_n(filter(seedlings, species == 'T') %>% nrow())
+) %>% 
+  mutate(twi = log(twi), dcm = log(dcm),
+         neighbours = log(neighbours), adult = log(as.numeric(adult))) %>% 
+  rename(tachigali = presence)
+fit_t <- brms::brm(tachigali ~ twi + dcm + neighbours + adult, data_t, cores = 4)
+save(fit_s, fit_d, fit_t, file = "save/ind_an_all.Rdata")
+```
+
+```{r indallrestab}
+load("save/ind_an_all.Rdata")
+sjPlot::tab_model(fit_s, fit_d, fit_t)
+```
+
+```{r}
+include_graphics("save/summary_ind_an.png")
+```

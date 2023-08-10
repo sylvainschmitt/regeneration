@@ -2,6 +2,11 @@ maps
 preliminary-analyses
 aggregated-analyses
 individual-analyses
+data
+environment-water-light-nutrients
+adult-neighbourhood-dispersion
+seedlings-neighbourhood-competition
+all-together
 literature
 hardy2005
 meetings
